@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Mail, Lock } from "lucide-react";
 import api from "../../utils/axios";
 import { useAuthStore } from "../../store/AuthStore";
-
 const campusImageUrl =
   "https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=2072&auto=format&fit=crop";
 
@@ -130,7 +129,7 @@ const LoginPage = () => {
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="relative flex flex-col m-6 bg-white shadow-2xl rounded-2xl md:flex-row md:max-w-7xl w-full">
         {/* Left Side */}
-        <div className="relative flex flex-col justify-center p-8 md:p-16 rounded-t-2xl text-white md:w-1/2 overflow-hidden sm:rounded-l-2xl">
+        <div className="relative flex flex-col justify-center p-8 md:p-16 rounded-t-2xl text-white md:w-1/2 overflow-hidden sm:rounded-l-2xl sm:rounded-tr-none">
           <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: `url(${campusImageUrl})` }}

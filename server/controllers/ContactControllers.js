@@ -4,7 +4,7 @@ import { logContactModification } from "./ModificationHistoryControllers.js";
 export const GetAllContact = async (req, res) => {
   const { limit } = req.query;
   const limitValue = limit ? parseInt(limit, 10) : null;
-  
+
   try {
     // First, get all unique contacts with created_by information
     let baseContactsQuery;
@@ -157,7 +157,7 @@ export const GetAllContact = async (req, res) => {
 
     const contacts = await baseContactsQuery;
     console.log(`🔍 Found ${contacts.length} contacts`);
-    
+
     // Calculate acquisition metrics using PostgreSQL DATE_TRUNC [web:304][web:315]
     const acquisitionMetrics = await db`
       WITH daily_counts AS (
@@ -241,8 +241,10 @@ export const GetAllContact = async (req, res) => {
 
     // Get events for these contacts
     if (contacts.length > 0) {
-      const contactIds = contacts.map(c => parseInt(c.contact_id)).filter(id => !isNaN(id));
-      
+      const contactIds = contacts
+        .map((c) => parseInt(c.contact_id))
+        .filter((id) => !isNaN(id));
+
       const events = await db`
         SELECT 
           e.contact_id,
@@ -261,7 +263,7 @@ export const GetAllContact = async (req, res) => {
         WHERE e.contact_id = ANY(${contactIds})
         ORDER BY e.contact_id, e.created_at DESC
       `;
-      
+
       // Group events by contact_id
       const eventsByContact = events.reduce((acc, event) => {
         const contactId = parseInt(event.contact_id);
@@ -271,53 +273,71 @@ export const GetAllContact = async (req, res) => {
         acc[contactId].push(event);
         return acc;
       }, {});
-      
+
       // Attach events to contacts
-      const result = contacts.map(contact => {
+      const result = contacts.map((contact) => {
         const contactId = parseInt(contact.contact_id);
         const contactEvents = eventsByContact[contactId] || [];
-        
+
         // Calculate aggregated event fields for backward compatibility
-        const eventNames = contactEvents.map(e => e.event_name).filter(Boolean);
-        const eventRoles = contactEvents.map(e => e.event_role).filter(Boolean);
-        const eventOrganizations = contactEvents.map(e => e.event_held_organization).filter(Boolean);
-        const eventLocations = contactEvents.map(e => e.event_location).filter(Boolean);
-        const eventCreatedAts = contactEvents.map(e => e.event_created_at).filter(Boolean);
-        const eventUpdatedAts = contactEvents.map(e => e.event_updated_at).filter(Boolean);
-        
+        const eventNames = contactEvents
+          .map((e) => e.event_name)
+          .filter(Boolean);
+        const eventRoles = contactEvents
+          .map((e) => e.event_role)
+          .filter(Boolean);
+        const eventOrganizations = contactEvents
+          .map((e) => e.event_held_organization)
+          .filter(Boolean);
+        const eventLocations = contactEvents
+          .map((e) => e.event_location)
+          .filter(Boolean);
+        const eventCreatedAts = contactEvents
+          .map((e) => e.event_created_at)
+          .filter(Boolean);
+        const eventUpdatedAts = contactEvents
+          .map((e) => e.event_updated_at)
+          .filter(Boolean);
+
         return {
           ...contact,
           // Backward compatibility: aggregated fields
-          event_name: eventNames.length > 0 ? eventNames.join('; ') : null,
-          event_role: eventRoles.length > 0 ? eventRoles.join('; ') : null,
-          event_held_organization: eventOrganizations.length > 0 ? eventOrganizations.join('; ') : null,
-          event_location: eventLocations.length > 0 ? eventLocations.join('; ') : null,
-          verified: contactEvents.some(e => e.verified),
-          contact_status: contactEvents.length > 0 ? contactEvents.map(e => e.contact_status).filter(Boolean).join('; ') : null,
-          event_created_at: eventCreatedAts.length > 0 ? eventCreatedAts.join('; ') : null,
-          event_details_updated_at: eventUpdatedAts.length > 0 ? eventUpdatedAts.join('; ') : null,
-          
+          event_name: eventNames.length > 0 ? eventNames.join("; ") : null,
+          event_role: eventRoles.length > 0 ? eventRoles.join("; ") : null,
+          event_held_organization:
+            eventOrganizations.length > 0
+              ? eventOrganizations.join("; ")
+              : null,
+          event_location:
+            eventLocations.length > 0 ? eventLocations.join("; ") : null,
+          verified: contactEvents.some((e) => e.verified),
+          contact_status:
+            contactEvents.length > 0
+              ? contactEvents
+                  .map((e) => e.contact_status)
+                  .filter(Boolean)
+                  .join("; ")
+              : null,
+          event_created_at:
+            eventCreatedAts.length > 0 ? eventCreatedAts.join("; ") : null,
+          event_details_updated_at:
+            eventUpdatedAts.length > 0 ? eventUpdatedAts.join("; ") : null,
+
           // NEW: Array of individual events for detailed processing
           events: contactEvents,
-          event_count: contactEvents.length
+          event_count: contactEvents.length,
         };
       });
-      
-      // Log the view operation
-      try {
-        await logContactModification(db, null, req.user?.id || 'system', "VIEW ALL");
-      } catch (err) {
-        console.warn("Contact modification logging failed:", err.message);
-      }
-
       return res.status(200).json({
         success: true,
         data: result,
         meta: {
           total_contacts: result.length,
           total_events: events.length,
-          contacts_with_events: result.filter(c => c.events.length > 0).length,
-          contacts_without_events: result.filter(c => c.events.length === 0).length,
+          contacts_with_events: result.filter((c) => c.events.length > 0)
+            .length,
+          contacts_without_events: result.filter((c) => c.events.length === 0)
+            .length,
           // NEW: Acquisition metrics
           acquisition_metrics: acquisitionMetrics.reduce((acc, metric) => {
             acc[metric.period_type] = {
@@ -326,14 +346,18 @@ export const GetAllContact = async (req, res) => {
               min_count: metric.min_count,
               current_count: metric.today_count,
               previous_count: metric.yesterday_count,
-              trend: metric.today_count > metric.yesterday_count ? 'up' : 
-                     metric.today_count < metric.yesterday_count ? 'down' : 'stable'
+              trend:
+                metric.today_count > metric.yesterday_count
+                  ? "up"
+                  : metric.today_count < metric.yesterday_count
+                  ? "down"
+                  : "stable",
             };
             return acc;
           }, {}),
           // NEW: Top contributors
-          top_contributors: topContributors
-        }
+          top_contributors: topContributors,
+        },
       });
     } else {
       return res.status(200).json({
@@ -345,8 +369,8 @@ export const GetAllContact = async (req, res) => {
           contacts_with_events: 0,
           contacts_without_events: 0,
           acquisition_metrics: {},
-          top_contributors: []
-        }
+          top_contributors: [],
+        },
       });
     }
   } catch (error) {
@@ -409,7 +433,7 @@ export const CreateContact = async (req, res) => {
           `Contact with this email (${email_address}) or phone (${phone_number}) already exists.`
         );
       }
-
+      console.log(dob);
       const [contact] = await t`
           INSERT INTO contact (
             name, phone_number, email_address, dob, gender, nationality, marital_status, category,
@@ -898,6 +922,21 @@ export const UpdateContact = async (req, res) => {
   const { event_verified, contact_status, userId } = req.query;
   const isVerified = event_verified === "true";
 
+  // Handle userId - try multiple sources and provide fallback
+  const safeUserId =
+    userId ||
+    req.user?.id ||
+    req.body?.created_by ||
+    req.body?.userId ||
+    "system";
+  console.log("UpdateContact userId sources:", {
+    queryUserId: userId,
+    reqUserId: req.user?.id,
+    bodyCreatedBy: req.body?.created_by,
+    bodyUserId: req.body?.userId,
+    finalUserId: safeUserId,
+  });
+
   const {
     assignment_id,
     name,
@@ -927,6 +966,18 @@ export const UpdateContact = async (req, res) => {
     event_location,
     experiences,
   } = req.body;
+
+  // Debug: Log skills data being received
+  console.log("UpdateContact skills data:", {
+    skills,
+    skillsType: typeof skills,
+    skillsValue: JSON.stringify(skills),
+    experiences: experiences?.map((exp) => ({
+      job_title: exp.job_title,
+      company_skills: exp.company_skills,
+      company_skills_type: typeof exp.company_skills,
+    })),
+  });
 
   // Validate and sanitize ID fields to prevent empty string issues
   const validContactId = contact_id && contact_id !== "" ? contact_id : null;
@@ -1033,6 +1084,12 @@ export const UpdateContact = async (req, res) => {
         }
       } else {
         console.log("Updating existing contact...");
+        console.log(
+          "Before UPDATE - skills value:",
+          skills,
+          "Type:",
+          typeof skills
+        );
         [contactRecord] = await t`
           UPDATE contact SET
             name = ${name === undefined ? null : name},
@@ -1077,6 +1134,10 @@ export const UpdateContact = async (req, res) => {
           WHERE contact_id = ${validContactId}
           RETURNING *
         `;
+        console.log(
+          "After UPDATE - contactRecord.skills:",
+          contactRecord?.skills
+        );
       }
 
       const activeContactId = validContactId || contactRecord?.contact_id;
@@ -1167,8 +1228,16 @@ export const UpdateContact = async (req, res) => {
       }
 
       if (experiences && experiences.length > 0 && activeContactId) {
+        console.log("Processing experiences for contact:", activeContactId);
+        console.log("Experiences data:", JSON.stringify(experiences, null, 2));
         await t`DELETE FROM contact_experience WHERE contact_id = ${activeContactId}`;
         for (const exp of experiences) {
+          console.log("Inserting experience:", {
+            job_title: exp.job_title,
+            company: exp.company,
+            company_skills: exp.company_skills,
+            company_skills_type: typeof exp.company_skills,
+          });
           const [newExp] = await t`
             INSERT INTO contact_experience (
               contact_id, job_title, company, department, from_date, to_date, company_skills
@@ -1182,6 +1251,7 @@ export const UpdateContact = async (req, res) => {
               ${exp.company_skills === undefined ? null : exp.company_skills}
             ) RETURNING *
           `;
+          console.log("Inserted experience result:", newExp);
           updatedExperiences.push(newExp);
         }
       }
@@ -1286,11 +1356,11 @@ export const UpdateContact = async (req, res) => {
           await t`UPDATE user_assignments SET completed = TRUE WHERE id = ${assignmentIdValue}`;
 
           try {
-            console.log(userId);
+            console.log("Logging USER UPDATE with userId:", safeUserId);
             logContactModification(
               db,
               activeContactId,
-              userId,
+              safeUserId,
               "USER UPDATE",
               t,
               null
@@ -1306,11 +1376,11 @@ export const UpdateContact = async (req, res) => {
       } else {
         if (eventAssignment) {
           try {
-            console.log(userId);
+            console.log("Logging USER VERIFY with userId:", safeUserId);
             logContactModification(
               db,
               activeContactId,
-              userId,
+              safeUserId,
               "USER VERIFY",
               t,
               null
@@ -1326,11 +1396,11 @@ export const UpdateContact = async (req, res) => {
             `Event ID ${event_id} has no assignment - regular update`
           );
           try {
-            console.log(userId);
+            console.log("Logging UPDATE with userId:", safeUserId);
             logContactModification(
               db,
               activeContactId,
-              userId,
+              safeUserId,
               "UPDATE",
               t,
               null
@@ -1649,6 +1719,128 @@ export const SearchContacts = async (req, res) => {
     });
   } catch (err) {
     console.error("SearchContacts error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error!",
+      error: err.message,
+    });
+  }
+};
+
+// Search for skills with autocomplete functionality
+export const SearchSkills = async (req, res) => {
+  const { q } = req.query;
+
+  if (!q || q.length < 2) {
+    return res.status(200).json({
+      success: true,
+      data: [],
+    });
+  }
+
+  const searchTerm = `%${q}%`;
+
+  try {
+    // Get distinct skills from contacts where skills field contains the search term
+    const skillsData = await db`
+      SELECT DISTINCT skills 
+      FROM contact 
+      WHERE skills IS NOT NULL 
+        AND skills != '' 
+        AND skills ILIKE ${searchTerm}
+        AND (rejected = false OR rejected IS NULL)
+      LIMIT 50
+    `;
+
+    // Get distinct company_skills from contact_experience table
+    const companySkillsData = await db`
+      SELECT DISTINCT ce.company_skills 
+      FROM contact_experience ce
+      JOIN contact c ON ce.contact_id = c.contact_id
+      WHERE ce.company_skills IS NOT NULL 
+        AND ce.company_skills != '' 
+        AND ce.company_skills ILIKE ${searchTerm}
+        AND (c.rejected = false OR c.rejected IS NULL)
+      LIMIT 50
+    `;
+
+    // Parse skills and filter for matches
+    const skillsSet = new Set();
+
+    // Process general skills from contact table
+    skillsData.forEach((record) => {
+      if (record.skills) {
+        const skills = record.skills
+          .split(",")
+          .map((skill) => skill.trim())
+          .filter(
+            (skill) =>
+              skill.length > 1 && skill.toLowerCase().includes(q.toLowerCase())
+          );
+
+        skills.forEach((skill) => {
+          // Only add skills that look like legitimate technical/professional skills
+          if (
+            skill.length >= 2 &&
+            (/^[A-Za-z]/.test(skill) ||
+              skill.includes(".") ||
+              skill.includes("#") ||
+              skill.includes("+") ||
+              skill.includes("/"))
+          ) {
+            skillsSet.add(skill);
+          }
+        });
+      }
+    });
+
+    // Process job-specific skills from contact_experience table
+    companySkillsData.forEach((record) => {
+      if (record.company_skills) {
+        const skills = record.company_skills
+          .split(",")
+          .map((skill) => skill.trim())
+          .filter(
+            (skill) =>
+              skill.length > 1 && skill.toLowerCase().includes(q.toLowerCase())
+          );
+
+        skills.forEach((skill) => {
+          // Only add skills that look like legitimate technical/professional skills
+          if (
+            skill.length >= 2 &&
+            (/^[A-Za-z]/.test(skill) ||
+              skill.includes(".") ||
+              skill.includes("#") ||
+              skill.includes("+") ||
+              skill.includes("/"))
+          ) {
+            skillsSet.add(skill);
+          }
+        });
+      }
+    });
+
+    // Convert to sorted array, limit to top 10 matches
+    const uniqueSkills = Array.from(skillsSet)
+      .sort((a, b) => {
+        // Prioritize exact matches and skills starting with search term
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const qLower = q.toLowerCase();
+
+        if (aLower.startsWith(qLower) && !bLower.startsWith(qLower)) return -1;
+        if (!aLower.startsWith(qLower) && bLower.startsWith(qLower)) return 1;
+        return a.localeCompare(b);
+      })
+      .slice(0, 10);
+
+    return res.status(200).json({
+      success: true,
+      data: uniqueSkills,
+    });
+  } catch (err) {
+    console.error("SearchSkills error:", err);
     return res.status(500).json({
       success: false,
       message: "Server Error!",

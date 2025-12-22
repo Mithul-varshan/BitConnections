@@ -14,6 +14,7 @@ import {
   Handshake,
   Download,
   BarChart3,
+  FileText,
 } from "lucide-react";
 import Header from "../../components/Header/Header";
 import Alert from "../../components/Alert/Alert";
@@ -94,7 +95,7 @@ const calculateCompletionPercentage = (complete, total) => {
   return Math.round((complete / total) * 100);
 };
 
-// Date calculation utilities [web:281][web:286][web:289]
+// Date calculation utilities
 const calculateAcquisitionRates = (contacts) => {
   const now = new Date();
   const startOfToday = startOfDay(now);
@@ -181,13 +182,17 @@ function Admin() {
   const [endDate, setEndDate] = useState(new Date());
   const [dateRangeType, setDateRangeType] = useState("custom");
 
+  // New state for modification history
+  const [modificationHistory, setModificationHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+
   const [alert, setAlert] = useState({
     isOpen: false,
     severity: "success",
     message: "",
   });
 
-  // Alert Functions
+  // Alert Functions - Modified to handle persistent info alerts
   const showAlert = (severity, message) => {
     setAlert({ isOpen: true, severity, message });
   };
@@ -195,6 +200,28 @@ function Admin() {
   const closeAlert = () => {
     setAlert((prev) => ({ ...prev, isOpen: false }));
   };
+
+  // Fetch modification history
+  useEffect(() => {
+    const fetchModificationHistory = async () => {
+      try {
+        setIsLoadingHistory(true);
+        const response = await api.get("/api/get-all-modification-history/");
+        const data = response.data;
+        console.log(data.data)
+        if (data.success && data.data) {
+          setModificationHistory(data.data);
+          console.log("📊 Modification history loaded:", data.data.length, "records");
+        }
+      } catch (error) {
+        console.error("Failed to fetch modification history:", error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    fetchModificationHistory();
+  }, []);
 
   // CSV export function
   const exportCsv = (contacts) => {
@@ -326,6 +353,82 @@ function Admin() {
     }
   };
 
+  // CSV Template download function
+  const downloadCSVTemplate = () => {
+    try {
+      // Headers in the EXACT order that backend processes (matches database insert order)
+      const headers = [
+        // REQUIRED FIELDS (Must be filled)
+        "name",
+        "phone_number",
+        "email_address",
+
+        // PERSONAL INFO (contact table - order matters)
+        "dob",
+        "gender",
+        "nationality",
+        "marital_status",
+        "category",
+        "secondary_email",
+        "secondary_phone_number",
+        "emergency_contact_name",
+        "emergency_contact_relationship",
+        "emergency_contact_phone_number",
+        "skills",
+        "linkedin_url",
+
+        // ADDRESS INFO (contact_address table)
+        "street",
+        "city",
+        "state",
+        "country",
+        "zipcode",
+
+        // EDUCATION INFO (contact_education table)
+        "pg_course_name",
+        "pg_college_name",
+        "pg_university_type",
+        "pg_start_date",
+        "pg_end_date",
+        "ug_course_name",
+        "ug_college_name",
+        "ug_university_type",
+        "ug_start_date",
+        "ug_end_date",
+
+        // EXPERIENCE INFO (contact_experience table)
+        "job_title",
+        "company_name",
+        "department_type",
+        "from_date",
+        "to_date",
+
+        // EVENT INFO (event table)
+        "event_name",
+        "event_role",
+        "event_held_organization",
+        "event_location",
+        "event_date",
+      ];
+
+      const csvContent = headers.join(",");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const fileName = `contacts-import-template-${format(
+        new Date(),
+        "yyyy-MM-dd"
+      )}.csv`;
+
+      saveAs(blob, fileName);
+      showAlert(
+        "success",
+        "CSV template downloaded successfully! Fill in the data and use 'Bulk CSV Import' to upload."
+      );
+    } catch (error) {
+      console.error("Error downloading CSV template:", error);
+      showAlert("error", "Failed to download CSV template");
+    }
+  };
+
   // CORRECTED: Fetch Dashboard Data with proper verification and acquisition calculations
   const fetchDashboardData = async () => {
     if (!id) return;
@@ -415,7 +518,7 @@ function Admin() {
           if (contact.events && Array.isArray(contact.events)) {
             contact.events.forEach((event) => {
               if (event.event_name) {
-                // Advanced normalization: Unicode, trim, lowercase, remove special chars [web:409][web:414]
+                // Advanced normalization: Unicode, trim, lowercase, remove special chars
                 const normalizedEventName = event.event_name
                   .normalize("NFD") // Unicode normalization
                   .trim() // Remove leading/trailing spaces
@@ -572,11 +675,12 @@ function Admin() {
       });
 
       if (response.data.success) {
-        const { successCount, errorCount, duplicateCount, totalRows } =
+        console.log(response.data.data)
+        const { successCount, errorCount, duplicateCount, totalRows,updatedCount,insertedCount } =
           response.data.data;
         showAlert(
           "success",
-          `CSV Import Complete!\n📊 Total rows processed: ${totalRows}\n✅ Successfully added: ${successCount}\n⚠️ Duplicates skipped: ${duplicateCount}\n❌ Errors encountered: ${errorCount}`
+          `CSV Import Complete!\n📊 Total rows processed: ${totalRows}\n✅ Successfully added: ${insertedCount}\n⚠️ Updation: ${updatedCount}\n❌ Errors encountered: ${errorCount}`
         );
         fetchDashboardData();
       } else {
@@ -623,6 +727,13 @@ function Admin() {
       onClick: () => csvInputRef.current?.click(),
     },
     {
+      title: "Download CSV Template",
+      description: "Get empty CSV template for bulk import",
+      icon: FileText,
+      color: "bg-teal-500",
+      onClick: () => downloadCSVTemplate(),
+    },
+    {
       title: "Task Management",
       description: "Create & assign tasks",
       icon: Handshake,
@@ -639,7 +750,7 @@ function Admin() {
   ];
 
   // Loading State
-  if (loading) {
+  if (loading || isLoadingHistory) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -677,7 +788,7 @@ function Admin() {
         message={alert.message}
         onClose={closeAlert}
         position="bottom"
-        duration={4000}
+        duration={alert.severity === "info" ? 0 : 4000}
       />
 
       <div className="w-full bg-white shadow-sm sticky top-0 z-50 border-b-2 border-b-gray-50">
@@ -742,29 +853,7 @@ function Admin() {
               color="bg-gradient-to-r from-purple-500 to-purple-600"
               subtext="Complete profiles"
             />
-            <StatCard
-              title="Monthly Acquisition Rate"
-              value={stats.monthlyAcquisitionRate}
-              icon={Calculator}
-              color="bg-gradient-to-r from-orange-500 to-orange-600"
-              trend={stats.monthlyAcquisitionTrend > 0 ? "up" : "down"}
-              trendValue={stats.monthlyAcquisitionTrend}
-              subtext={`${stats.dailyAcquisitionRate} today • ${stats.weeklyAcquisitionRate} weekly avg`}
-            />
-          </div>
-
-          {/* Secondary Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              title="LinkedIn Connections"
-              value={stats.linkedinConnections.toLocaleString()}
-              icon={Globe}
-              color="bg-gradient-to-r from-blue-600 to-indigo-600"
-              trend={stats.linkedinTrend > 0 ? "up" : "down"}
-              trendValue={stats.linkedinTrend}
-              subtext="Professional network"
-            />
-            <StatCard
+                        <StatCard
               title="Complete Profiles"
               value={stats.completeProfiles.toLocaleString()}
               icon={CheckCircle}
@@ -783,8 +872,6 @@ function Admin() {
               value={stats.totalEvents.toLocaleString()}
               icon={Calendar}
               color="bg-gradient-to-r from-purple-600 to-purple-700"
-              trend={stats.totalEventsTrend > 0 ? "up" : "down"}
-              trendValue={stats.totalEventsTrend}
               subtext="Event participations"
             />
             <StatCard
@@ -814,7 +901,7 @@ function Admin() {
                 </div>
               </div>
 
-              <ContactDataQualityMonitor contacts={contacts} />
+            <ContactDiversityOverview contacts={contacts} />
               <div className="mt-9">
                 <OnlineUsersCard />
               </div>
@@ -827,7 +914,7 @@ function Admin() {
             </div>
           </div>
 
-          {/* Contact Activity Over Time */}
+          {/* Contact Activity Over Time - NOW USING MODIFICATION HISTORY */}
           <div className="mt-8">
             <div className="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
               <div className="flex items-center gap-2 mb-4">
@@ -837,7 +924,7 @@ function Admin() {
                 </h2>
               </div>
               <ContactsChart
-                contacts={contacts}
+                modificationHistory={modificationHistory}
                 startDate={startDate}
                 endDate={endDate}
                 dateRangeType={dateRangeType}
@@ -856,12 +943,12 @@ function Admin() {
           {/* Additional Charts */}
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
             <EventsBarChart contacts={contacts} />
-            <ContactDiversityOverview contacts={contacts} />
+            <UserActivitySegmentation contacts={contacts} />
           </div>
 
           {/* User Activity Segmentation */}
           <div className="mt-6">
-            <UserActivitySegmentation contacts={contacts} />
+            
           </div>
         </div>
       </div>
